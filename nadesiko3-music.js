@@ -97,7 +97,7 @@ function playMML(mml, sys) {
     const log = com.get_log()
     const smfData = new Uint8Array(binMidi);
     console.log('sakuramml.log=', log)
-    console.log('@', sys.__picoaudio)
+    // console.log('@', sys.__picoaudio)
     sys.__picoaudio.initStatus()
     const parsedData = sys.__picoaudio.parseSMF(smfData)
     sys.__picoaudio.setData(parsedData)
