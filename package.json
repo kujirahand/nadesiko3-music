@@ -1,6 +1,6 @@
 {
   "name": "nadesiko3-music",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "description": "Music plugins for nadesiko3(wnako/web version)",
   "main": "nadesiko3-music.js",
