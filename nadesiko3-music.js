@@ -8,7 +8,12 @@ const PluginMusic = {
     '!クリア': {
         type: 'func',
         josi: [],
-        fn: function (sys) { }
+        fn: function (sys) {
+            // 演奏中であれば停める
+            if (typeof (sys.__picoaudio) !== 'undefined') {
+                sys.__picoaudio.initStatus()
+            }
+        }
     },
     // @音楽
     'MML演奏': { // @MMLを演奏する // @MMLえんそう
