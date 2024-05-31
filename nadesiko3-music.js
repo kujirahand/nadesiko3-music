@@ -4,9 +4,9 @@ const PluginMusic = {
         value: {
             pluginName: 'plugin_music', // プラグインの名前
             description: '音楽を再生するためのプラグイン', // 説明
-            pluginVersion: '3.6.0', // プラグインのバージョン
+            pluginVersion: '3.6.2', // プラグインのバージョン
             nakoRuntime: ['wnako'], // 対象ランタイム
-            nakoVersion: '3.6.0' // 要求なでしこバージョン
+            nakoVersion: '3.6.6' // 要求なでしこバージョン
         }
     },
     '初期化': {
@@ -37,7 +37,7 @@ const PluginMusic = {
                     console.log('loaded PicoAudio.min.js')
                 });
                 // コンパイラの読み込み
-                import('https://cdn.jsdelivr.net/npm/sakuramml@0.1.25/sakuramml.js')
+                import('https://cdn.jsdelivr.net/npm/sakuramml@0.1.26/sakuramml.js')
                 .then(module => {
                     sys.__sakuramml = module;
                     module.default().then(() => {
