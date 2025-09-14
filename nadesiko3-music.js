@@ -1,10 +1,21 @@
+// nadesiko3-music.js
+const SAKURAMML_VER = '0.1.44' // sakurammlのバージョン
+const SARKUAMML_URL = `https://cdn.jsdelivr.net/npm/sakuramml@${SAKURAMML_VER}/sakuramml.js`
+const PICOAUDIO_VER = '1.1.2' // picoaudioのバージョン
+const PICOAUDIO_URL = `https://cdn.jsdelivr.net/npm/picoaudio@${PICOAUDIO_VER}/dist/browser/PicoAudio.min.js`
+const LIBFLUIDSYNTH_VER = '2.4.6' // libfluidsynthのバージョン
+const LIBFLUIDSYNTH_URL = `https://nadesi.com/v3/common/music/libfluidsynth-${LIBFLUIDSYNTH_VER}-with-libsndfile.js`
+const JS_SYNTH_VER = '1.11.0' // js-synthesizerのバージョン
+const JS_SYNTH_URL = `https://nadesi.com/v3/common/music/js-synthesizer@${JS_SYNTH_VER}.min.js`
+const DEFAULT_SOUNDFONT_URL = 'https://nadesi.com/v3/common/music/TimGM6mb.sf2'
+
 const PluginMusic = {
     'meta': {
         type: 'const',
         value: {
             pluginName: 'plugin_music', // プラグインの名前
             description: '音楽を再生するためのプラグイン', // 説明
-            pluginVersion: '3.6.2', // プラグインのバージョン
+            pluginVersion: '3.7.1', // プラグインのバージョン
             nakoRuntime: ['wnako'], // 対象ランタイム
             nakoVersion: '3.6.6' // 要求なでしこバージョン
         }
@@ -13,6 +24,9 @@ const PluginMusic = {
         type: 'func',
         josi: [],
         fn: function (sys) {
+            sys.__picoaudio = undefined
+            sys.__sakuramml = undefined
+            sys.__soundfont = undefined
         }
     },
     '!クリア': {
@@ -32,12 +46,12 @@ const PluginMusic = {
         fn: function (mml, sys) {
             if (typeof(sys.__sakuramml) === 'undefined') {
                 // プレイヤーの読み込み
-                loadScript('https://cdn.jsdelivr.net/npm/picoaudio@1.1.2/dist/browser/PicoAudio.min.js', () => {
+                loadScript(PICOAUDIO_URL, () => {
                     sys.__picoaudio = new PicoAudio()
                     console.log('loaded PicoAudio.min.js')
                 });
                 // コンパイラの読み込み
-                import('https://cdn.jsdelivr.net/npm/sakuramml@0.1.26/sakuramml.js')
+                import(SARKUAMML_URL)
                 .then(module => {
                     sys.__sakuramml = module;
                     module.default().then(() => {
@@ -69,7 +83,7 @@ const PluginMusic = {
         fn: async function (url, sys) {
             // プレイヤーの読み込み
             if (typeof(sys.__picoaudio) === 'undefined') {
-                loadScript('https://cdn.jsdelivr.net/npm/picoaudio@1.1.2/dist/browser/PicoAudio.min.js', () => {
+                loadScript(PICOAUDIO_URL, () => {
                     sys.__picoaudio = new PicoAudio()
                     console.log('loaded PicoAudio.min.js')
                     playMIDI(url, sys)
@@ -96,8 +110,149 @@ const PluginMusic = {
             sys.__picoaudio_loop = v
         }
     },
+    'MMLコンパイル': { // @MMLをコンパイルしてMIDIファイルに変換する // @MMLこんぱいる
+        type: 'func',
+        josi: [['を', 'の']],
+        asyncFn: true,
+        fn: async function (mml, sys) {
+            return await compileMMLAsync(mml, sys)
+        }
+    },
+    // @サウンドフォント
+    'サウンドフォント読': { // @サウンドフォントのURLを指定して読み込む。URLに「デフォルト」を指定可能 // @サウンドフォントよむ
+        type: 'func',
+        josi: [['から', 'の']],
+        asyncFn: true,
+        fn: async function (url, sys) {
+            return awaitloadSoundFontAsync(url, sys)
+        }
+    },
+    'サウンドフォントMIDI演奏': { // @MIDIデータ(バイナリ)を指定して演奏する // @サウンドフォントMIDIえんそう
+        type: 'func',
+        josi: [['を', 'の']],
+        asyncFn: true,
+        fn: async function (bin, sys) {
+            if (typeof(sys.__soundfont) === 'undefined') {
+                await loadSoundFontAsync(DEFAULT_SOUNDFONT_URL, sys)
+            }
+            // SoundFontを使ってMIDIを演奏する
+            await playMIDIWithSoundFont(bin , sys.__soundfont, sys)
+        }
+    },
+    'サウンドフォントMIDI演奏停止': { // @再生中のMIDI演奏を停止する // @サウンドフォントえんそうていし
+        type: 'func',
+        josi: [],
+        asyncFn: true,
+        fn: async function (sys) {
+            if (typeof (sys.__jssynth) === 'undefined') {
+                return
+            }
+            await sys.__jssynth.stopPlayer()
+            try {
+                if (typeof(sys.__audio_context) !== 'undefined') {
+                    await sys.__audio_context.close()
+                    sys.__audio_context = undefined
+                }
+            } catch (e) {
+                console.error('AudioContext close error:', e)
+            }
+        }
+    },
+    'サウンドフォントMML演奏': { // @MMLをサウンドフォントで演奏する // @サウンドフォントMMLえんそう
+        type: 'func',
+        josi: [['を', 'の']],
+        asyncFn: true,
+        fn: async function (mml, sys) {
+            if (typeof(sys.__soundfont) === 'undefined') {
+                await loadSoundFontAsync(DEFAULT_SOUNDFONT_URL, sys)                
+            }
+            // MIDIをバイナリに変換
+            bin = await compileMMLAsync(mml, sys)
+            // SoundFontを使ってMIDIを演奏する
+            await playMIDIWithSoundFont(bin , sys.__soundfont, sys)
+        }
+    },
 }
 
+/// サウンドフォントのバイナリデータを読み込む
+async function loadSoundFontAsync(url, sys) {   
+    if (url === 'デフォルト') {
+        url = DEFAULT_SOUNDFONT_URL
+    }
+    console.log('load SoundFont file=', url)
+    try {
+        const response = await fetch(url)
+        if (!response.ok) {
+            console.error('サウンドフォントの読み込みでURLのエラー : fetch error', response)
+            return
+        }
+        const buffer = await response.arrayBuffer()
+        const sfData = new Uint8Array(buffer)
+        sys.__soundfont = sfData
+        console.log('loaded SoundFont file, size=', sfData.length)
+        return sfData
+    } catch (error) {
+        console.error('サウンドフォントの読み込みでURLのエラー : ', error)
+        sys.__soundfont = undefined
+        throw error
+    }
+}
+
+/// SoundFontを使ってMIDIを演奏する
+async function playMIDIWithSoundFont(binMidi, soundfont, sys) {
+    // ライブラリの読み込み
+    await loadScriptAsync(LIBFLUIDSYNTH_URL)
+    await loadScriptAsync(JS_SYNTH_URL)
+    // オーディオコンテキストの初期化
+    var context = new AudioContext();
+    var synth = new JSSynth.Synthesizer();
+    synth.init(context.sampleRate);
+
+    // Create AudioNode (ScriptProcessorNode) to output audio data
+    var node = synth.createAudioNode(context, 8192); // 8192 is the frame count of buffer
+    node.connect(context.destination);
+
+    await synth.loadSFont(soundfont)
+    await synth.addSMFDataToPlayer(binMidi)
+    await synth.playPlayer()
+
+    sys.__audio_context = context
+    return sys.__jssynth = synth
+}
+
+/// MMLをコンパイルしてMIDIバイナリを返す(非同期版)
+function compileMMLAsync(mml, sys) {
+    return new Promise((resolve, _reject) => {
+        if (typeof(sys.__sakuramml) === 'undefined') {
+            // コンパイラの読み込み
+            import(SARKUAMML_URL)
+            .then(module => {
+                sys.__sakuramml = module;
+                module.default().then(() => {
+                    console.log('loaded sakuramml.js')
+                    console.log('sakuramml ver.', module.get_version());
+                    resolve(compileMML(mml, sys))
+                })
+            });
+        } else {
+            // すでに読み込まれている
+            resolve(compileMML(mml, sys))
+        }
+    })
+}
+
+/// MMLをコンパイルしてMIDIバイナリを返す
+function compileMML(mml, sys) {
+    const SakuraCompiler = sys.__sakuramml.SakuraCompiler
+    const com = SakuraCompiler.new()
+    com.set_language('ja')
+    const binMidi = com.compile(mml)
+    const log = com.get_log()
+    console.log('sakuramml.log=', log)
+    return binMidi
+}
+
+/// MMLを演奏する(PicoAudioを使う)
 function playMML(mml, sys) {
     // wait for picoaudio
     if (typeof(sys.__picoaudio) === 'undefined') {
@@ -108,11 +263,8 @@ function playMML(mml, sys) {
     const SakuraCompiler = sys.__sakuramml.SakuraCompiler
     const com = SakuraCompiler.new()
     com.set_language('ja')
-    const binMidi = com.compile(mml)
-    const log = com.get_log()
+    const binMidi = compileMML(mml, sys)
     const smfData = new Uint8Array(binMidi);
-    console.log('sakuramml.log=', log)
-    // console.log('@', sys.__picoaudio)
     sys.__picoaudio.initStatus()
     const parsedData = sys.__picoaudio.parseSMF(smfData)
     sys.__picoaudio.setData(parsedData)
@@ -162,6 +314,15 @@ function playMIDI(url, sys) {
     })
 }
 
+/// 非同期でスクリプトを読み込む
+async function loadScriptAsync(url) {
+    return new Promise((resolve, _reject) => {
+        loadScript(url, () => {
+            resolve()
+        })
+    })
+}
+
 
 function loadScript(url, callback) {
     // 新しいscript要素を作成
@@ -177,12 +338,13 @@ function loadScript(url, callback) {
     document.head.appendChild(script);
 }
 
+// scriptタグで取り込んだ時、自動で登録する
+/* istanbul ignore else */
+if (typeof (navigator) === 'object' && typeof (navigator.nako3) === 'object') {
+    console.log('nadesiko3-music.js loaded.')
+    navigator.nako3.addPluginObject('PluginMusic', PluginMusic)
+}
 // module.exports = PluginMusic
 // export default PluginMusic
 
-// scriptタグで取り込んだ時、自動で登録する
-/* istanbul ignore else */
-if (typeof (navigator) === 'object' && typeof (navigator.nako3)) {
-    navigator.nako3.addPluginObject('PluginMusic', PluginMusic) 
-}
 
