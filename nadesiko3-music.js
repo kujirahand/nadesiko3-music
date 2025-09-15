@@ -15,7 +15,7 @@ const PluginMusic = {
         value: {
             pluginName: 'plugin_music', // プラグインの名前
             description: '音楽を再生するためのプラグイン', // 説明
-            pluginVersion: '3.7.2', // プラグインのバージョン
+            pluginVersion: '3.7.3', // プラグインのバージョン
             nakoRuntime: ['wnako'], // 対象ランタイム
             nakoVersion: '3.6.6' // 要求なでしこバージョン
         }
@@ -27,6 +27,9 @@ const PluginMusic = {
             sys.__picoaudio = undefined
             sys.__sakuramml = undefined
             sys.__soundfont = undefined
+            sys.__jssynth = undefined
+            sys.__audio_context = undefined
+            sys.__picoaudio_loop = false
         }
     },
     '!クリア': {
@@ -220,22 +223,28 @@ async function playMIDIWithSoundFont(binMidi, soundfont, sys) {
     // ライブラリの読み込み
     await loadScriptAsync(LIBFLUIDSYNTH_URL)
     await loadScriptAsync(JS_SYNTH_URL)
+    await sleep(50)
     // オーディオコンテキストの初期化
-    var context = new AudioContext();
-    var synth = new JSSynth.Synthesizer();
-    synth.init(context.sampleRate);
+    const context = new AudioContext()
+    const synth = new JSSynth.Synthesizer()
+    synth.init(context.sampleRate)
 
     // Create AudioNode (ScriptProcessorNode) to output audio data
-    var node = synth.createAudioNode(context, 8192); // 8192 is the frame count of buffer
-    node.connect(context.destination);
+    const node = synth.createAudioNode(context, 8192) // 8192 is the frame count of buffer
+    node.connect(context.destination)
 
     await synth.loadSFont(soundfont)
     await synth.addSMFDataToPlayer(binMidi)
+    await sleep(50)
 
     // ループ再生設定
     if (sys.__picoaudio_loop) {
-        synth.setPlayerLoop(-1)
-        console.log('SoundFont MIDI loop enabled')
+        try {
+            synth.setPlayerLoop(-1)
+            console.log('SoundFont MIDI loop enabled')
+        } catch (e) {
+            console.error('SoundFont MIDI loop error:', e)
+        }
     } else {
         // synth.setPlayerLoop(1)
     }
@@ -246,6 +255,11 @@ async function playMIDIWithSoundFont(binMidi, soundfont, sys) {
 
     sys.__audio_context = context
     return sys.__jssynth = synth
+}
+
+/// スリープ
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /// MMLをコンパイルしてMIDIバイナリを返す(非同期版)
@@ -374,5 +388,3 @@ if (typeof (navigator) === 'object' && typeof (navigator.nako3) === 'object') {
 }
 // module.exports = PluginMusic
 // export default PluginMusic
-
-

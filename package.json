@@ -1,13 +1,13 @@
 {
   "name": "nadesiko3-music",
-  "version": "3.7.2",
+  "version": "3.7.3",
   "type": "module",
   "description": "Music plugins for nadesiko3(wnako/web version)",
   "main": "nadesiko3-music.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["music", "mml", "sakuramml", "midi"],
+  "keywords": ["music", "mml", "sakuramml", "midi", "soundfont", "nadesiko3"],
   "author": "kujirahand",
   "license": "MIT"
 }
