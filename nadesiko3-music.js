@@ -30,6 +30,7 @@ const PluginMusic = {
             sys.__jssynth = undefined
             sys.__audio_context = undefined
             sys.__picoaudio_loop = false
+            sys.__soundfont_wait_time = 300 // サウンドフォント読み込み後の待機時間(ミリ秒)
         }
     },
     '!クリア': {
@@ -124,7 +125,7 @@ const PluginMusic = {
         }
     },
     // @サウンドフォント
-    'サウンドフォント読': { // @サウンドフォントのURLを指定して読み込む。URLに「デフォルト」を指定可能 // @サウンドフォントよむ
+    'サウンドフォント読': { // @サウンドフォントのURLを指定して読み込む。URLに「デフォルト」を指定可能 // @さうんどふぉんとよむ
         type: 'func',
         josi: [['から', 'の']],
         asyncFn: true,
@@ -132,7 +133,7 @@ const PluginMusic = {
             return await loadSoundFontAsync(url, sys)
         }
     },
-    'サウンドフォントMIDI演奏': { // @MIDIデータ(バイナリ)を指定して演奏する // @サウンドフォントMIDIえんそう
+    'サウンドフォントMIDI演奏': { // @MIDIデータ(バイナリ)を指定して演奏する // @さうんどふぉんとMIDIえんそう
         type: 'func',
         josi: [['を', 'の']],
         asyncFn: true,
@@ -144,7 +145,7 @@ const PluginMusic = {
             await playMIDIWithSoundFont(bin , sys.__soundfont, sys)
         }
     },
-    'サウンドフォントMIDI演奏停止': { // @再生中のMIDI演奏を停止する // @サウンドフォントえんそうていし
+    'サウンドフォントMIDI演奏停止': { // @再生中のMIDI演奏を停止する // @さうんどふぉんとえんそうていし
         type: 'func',
         josi: [],
         asyncFn: true,
@@ -152,7 +153,7 @@ const PluginMusic = {
             await stopSoundFontMIDIAsync(sys)
         }
     },
-    'サウンドフォントMML演奏': { // @MMLをサウンドフォントで演奏する // @サウンドフォントMMLえんそう
+    'サウンドフォントMML演奏': { // @MMLをサウンドフォントで演奏する // @さうんどふぉんとMMLえんそう
         type: 'func',
         josi: [['を', 'の']],
         asyncFn: true,
@@ -164,6 +165,14 @@ const PluginMusic = {
             bin = await compileMMLAsync(mml, sys)
             // SoundFontを使ってMIDIを演奏する
             await playMIDIWithSoundFont(bin , sys.__soundfont, sys)
+        }
+    },
+    'サウンドフォント待時間設定': { // @再生前の待機時間をミリ秒で指定(エラーが出るときに指定) // @さうんどふぉんとまちじかんせってい
+        type: 'func',
+        josi: ["に", "へ"],
+        asyncFn: true,
+        fn: async function (v, sys) {
+            sys.__soundfont_wait_time = v
         }
     },
 }
@@ -223,7 +232,8 @@ async function playMIDIWithSoundFont(binMidi, soundfont, sys) {
     // ライブラリの読み込み
     await loadScriptAsync(LIBFLUIDSYNTH_URL)
     await loadScriptAsync(JS_SYNTH_URL)
-    await sleep(50)
+    await sleep(sys.__soundfont_wait_time)
+
     // オーディオコンテキストの初期化
     const context = new AudioContext()
     const synth = new JSSynth.Synthesizer()
@@ -235,7 +245,6 @@ async function playMIDIWithSoundFont(binMidi, soundfont, sys) {
 
     await synth.loadSFont(soundfont)
     await synth.addSMFDataToPlayer(binMidi)
-    await sleep(50)
 
     // ループ再生設定
     if (sys.__picoaudio_loop) {
