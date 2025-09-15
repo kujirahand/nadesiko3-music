@@ -15,7 +15,7 @@ const PluginMusic = {
         value: {
             pluginName: 'plugin_music', // プラグインの名前
             description: '音楽を再生するためのプラグイン', // 説明
-            pluginVersion: '3.7.3', // プラグインのバージョン
+            pluginVersion: '3.7.4', // プラグインのバージョン
             nakoRuntime: ['wnako'], // 対象ランタイム
             nakoVersion: '3.6.6' // 要求なでしこバージョン
         }
