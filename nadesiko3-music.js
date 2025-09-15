@@ -15,7 +15,7 @@ const PluginMusic = {
         value: {
             pluginName: 'plugin_music', // プラグインの名前
             description: '音楽を再生するためのプラグイン', // 説明
-            pluginVersion: '3.7.1', // プラグインのバージョン
+            pluginVersion: '3.7.2', // プラグインのバージョン
             nakoRuntime: ['wnako'], // 対象ランタイム
             nakoVersion: '3.6.6' // 要求なでしこバージョン
         }
@@ -32,11 +32,13 @@ const PluginMusic = {
     '!クリア': {
         type: 'func',
         josi: [],
-        fn: function (sys) {
+        fn: async function (sys) {
             // 演奏中であれば停める
             if (typeof (sys.__picoaudio) !== 'undefined') {
                 sys.__picoaudio.initStatus()
             }
+            // サウンドフォントの演奏を停止
+            await stopSoundFontMIDIAsync(sys)
         }
     },
     // @音楽
@@ -124,7 +126,7 @@ const PluginMusic = {
         josi: [['から', 'の']],
         asyncFn: true,
         fn: async function (url, sys) {
-            return awaitloadSoundFontAsync(url, sys)
+            return await loadSoundFontAsync(url, sys)
         }
     },
     'サウンドフォントMIDI演奏': { // @MIDIデータ(バイナリ)を指定して演奏する // @サウンドフォントMIDIえんそう
@@ -144,18 +146,7 @@ const PluginMusic = {
         josi: [],
         asyncFn: true,
         fn: async function (sys) {
-            if (typeof (sys.__jssynth) === 'undefined') {
-                return
-            }
-            await sys.__jssynth.stopPlayer()
-            try {
-                if (typeof(sys.__audio_context) !== 'undefined') {
-                    await sys.__audio_context.close()
-                    sys.__audio_context = undefined
-                }
-            } catch (e) {
-                console.error('AudioContext close error:', e)
-            }
+            await stopSoundFontMIDIAsync(sys)
         }
     },
     'サウンドフォントMML演奏': { // @MMLをサウンドフォントで演奏する // @サウンドフォントMMLえんそう
@@ -172,6 +163,32 @@ const PluginMusic = {
             await playMIDIWithSoundFont(bin , sys.__soundfont, sys)
         }
     },
+}
+
+/// サウンドフォントの演奏を停止する
+async function stopSoundFontMIDIAsync(sys) {
+    // 演奏中でなければ何もしない
+    if (typeof (sys.__jssynth) === 'undefined') {
+        return
+    }
+    try {
+        try {
+            // 停止
+            await sys.__jssynth.stopPlayer()
+        } catch (e) {
+            console.error('JSSynth stopPlayer error:', e)
+        }
+        // AudioContextを閉じる
+        if (typeof(sys.__audio_context) !== 'undefined') {
+            await sys.__audio_context.close()
+            sys.__audio_context = undefined
+        }
+        // Synthesizerを破棄
+        sys.__jssynth = undefined
+        sys.__soundfont = undefined
+    } catch (e) {
+        console.error('AudioContext close error:', e)
+    }
 }
 
 /// サウンドフォントのバイナリデータを読み込む
@@ -214,7 +231,18 @@ async function playMIDIWithSoundFont(binMidi, soundfont, sys) {
 
     await synth.loadSFont(soundfont)
     await synth.addSMFDataToPlayer(binMidi)
+
+    // ループ再生設定
+    if (sys.__picoaudio_loop) {
+        synth.setPlayerLoop(-1)
+        console.log('SoundFont MIDI loop enabled')
+    } else {
+        // synth.setPlayerLoop(1)
+    }
+
+    // 演奏開始
     await synth.playPlayer()
+
 
     sys.__audio_context = context
     return sys.__jssynth = synth
