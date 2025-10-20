@@ -169,7 +169,7 @@ const PluginMusic = {
     },
     'サウンドフォント待時間設定': { // @再生前の待機時間をミリ秒で指定(エラーが出るときに指定) // @さうんどふぉんとまちじかんせってい
         type: 'func',
-        josi: ["に", "へ"],
+        josi: [["に", "へ"]],
         asyncFn: true,
         fn: async function (v, sys) {
             sys.__soundfont_wait_time = v
