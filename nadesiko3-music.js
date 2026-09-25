@@ -282,6 +282,7 @@ function loadSakuraMMLAsync (sys) {
 function loadPicoAudioAsync (sys) {
     if (typeof(sys.__picoaudio_promise) === 'undefined') {
         sys.__picoaudio_promise = new Promise((resolve, reject) => {
+            // 読み込み失敗(オフライン等)も検知し、再試行できるようにする
             loadScript(PICOAUDIO_URL, () => {
                 const PicoAudio = window.PicoAudio
                 if (typeof(PicoAudio) === 'undefined') {
@@ -292,6 +293,8 @@ function loadPicoAudioAsync (sys) {
                 sys.__picoaudio = pico
                 console.log('loaded PicoAudio.min.js')
                 resolve(pico)
+            }, () => {
+                reject(new Error('PicoAudio.min.jsの読み込みに失敗しました'))
             })
         })
         sys.__picoaudio_promise.catch(() => {
@@ -400,15 +403,17 @@ function playMIDI(url, sys) {
 
 /// 非同期でスクリプトを読み込む
 async function loadScriptAsync(url) {
-    return new Promise((resolve, _reject) => {
+    return new Promise((resolve, reject) => {
         loadScript(url, () => {
             resolve()
+        }, () => {
+            reject(new Error('スクリプトの読み込みに失敗しました: ' + url))
         })
     })
 }
 
 
-function loadScript(url, callback) {
+function loadScript(url, callback, errorCallback) {
     // 新しいscript要素を作成
     var script = document.createElement('script');
     script.type = 'text/javascript';
@@ -416,6 +421,10 @@ function loadScript(url, callback) {
     // スクリプトの読み込みが完了した際のコールバックを設定
     if (callback) {
         script.onload = callback;
+    }
+    // スクリプトの読み込みに失敗した際のコールバックを設定
+    if (errorCallback) {
+        script.onerror = errorCallback;
     }
 
     // script要素をドキュメントに追加
