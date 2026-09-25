@@ -1,6 +1,6 @@
 // nadesiko3-music.js
-const SAKURAMML_VER = '0.1.44' // sakurammlのバージョン
-const SARKUAMML_URL = `https://cdn.jsdelivr.net/npm/sakuramml@${SAKURAMML_VER}/sakuramml.js`
+const SAKURAMML_VER = '0.2.3' // sakurammlのバージョン
+const SAKURAMML_URL = `https://cdn.jsdelivr.net/npm/sakuramml@${SAKURAMML_VER}/sakuramml.js`
 const PICOAUDIO_VER = '1.1.2' // picoaudioのバージョン
 const PICOAUDIO_URL = `https://cdn.jsdelivr.net/npm/picoaudio@${PICOAUDIO_VER}/dist/browser/PicoAudio.min.js`
 const LIBFLUIDSYNTH_VER = '2.4.6' // libfluidsynthのバージョン
@@ -15,7 +15,7 @@ const PluginMusic = {
         value: {
             pluginName: 'plugin_music', // プラグインの名前
             description: '音楽を再生するためのプラグイン', // 説明
-            pluginVersion: '3.7.4', // プラグインのバージョン
+            pluginVersion: '3.8.0', // プラグインのバージョン
             nakoRuntime: ['wnako'], // 対象ランタイム
             nakoVersion: '3.6.6' // 要求なでしこバージョン
         }
@@ -25,7 +25,9 @@ const PluginMusic = {
         josi: [],
         fn: function (sys) {
             sys.__picoaudio = undefined
+            sys.__picoaudio_promise = undefined
             sys.__sakuramml = undefined
+            sys.__sakuramml_promise = undefined
             sys.__soundfont = undefined
             sys.__jssynth = undefined
             sys.__audio_context = undefined
@@ -50,25 +52,11 @@ const PluginMusic = {
         type: 'func',
         josi: [['を', 'の']],
         fn: function (mml, sys) {
-            if (typeof(sys.__sakuramml) === 'undefined') {
-                // プレイヤーの読み込み
-                loadScript(PICOAUDIO_URL, () => {
-                    sys.__picoaudio = new PicoAudio()
-                    console.log('loaded PicoAudio.min.js')
-                });
-                // コンパイラの読み込み
-                import(SARKUAMML_URL)
-                .then(module => {
-                    sys.__sakuramml = module;
-                    module.default().then(() => {
-                        console.log('loaded sakuramml.js')
-                        console.log('sakuramml ver.', module.get_version());
-                        playMML(mml, sys)
-                    })
-                });
-            } else {
-                playMML(mml, sys)
-            }
+            // コンパイラ・プレイヤーの読み込み
+            loadPicoAudioAsync(sys).catch(err => console.error(err.message))
+            loadSakuraMMLAsync(sys).then(module => {
+                playMML(mml, module, sys)
+            }).catch(err => console.error('MML演奏の準備に失敗しました:', err))
         },
         return_none: true
     },
@@ -87,13 +75,13 @@ const PluginMusic = {
         josi: [['を', 'の']],
         asyncFn: true,
         fn: async function (url, sys) {
-            // プレイヤーの読み込み
-            if (typeof(sys.__picoaudio) === 'undefined') {
-                loadScript(PICOAUDIO_URL, () => {
-                    sys.__picoaudio = new PicoAudio()
-                    console.log('loaded PicoAudio.min.js')
-                    playMIDI(url, sys)
-                });
+            // プレイヤーの読み込み(多重読み込み・二重再生を避けるためPromiseを使う)
+            const pico = await loadPicoAudioAsync(sys).catch(err => {
+                console.error(err.message)
+                return undefined
+            })
+            if (typeof (pico) === 'undefined') {
+                return
             }
             playMIDI(url, sys)
         },
@@ -162,7 +150,7 @@ const PluginMusic = {
                 await loadSoundFontAsync(DEFAULT_SOUNDFONT_URL, sys)                
             }
             // MIDIをバイナリに変換
-            bin = await compileMMLAsync(mml, sys)
+            const bin = await compileMMLAsync(mml, sys)
             // SoundFontを使ってMIDIを演奏する
             await playMIDIWithSoundFont(bin , sys.__soundfont, sys)
         }
@@ -271,62 +259,107 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+/// sakuramml(WASM)を読み込む。多重に呼ばれても初期化は一度だけ行う
+function loadSakuraMMLAsync (sys) {
+    if (typeof(sys.__sakuramml_promise) === 'undefined') {
+        sys.__sakuramml_promise = import(SAKURAMML_URL)
+            .then(async module => {
+                await module.default()
+                sys.__sakuramml = module
+                console.log('loaded sakuramml.js ver.', module.get_version())
+                return module
+            })
+            .catch(err => {
+                // 失敗時は次回に備えて読み込み前の状態に戻す
+                sys.__sakuramml_promise = undefined
+                throw err
+            })
+    }
+    return sys.__sakuramml_promise
+}
+
+/// PicoAudio(演奏エンジン)を読み込む。多重に呼ばれても初期化は一度だけ行う
+function loadPicoAudioAsync (sys) {
+    if (typeof(sys.__picoaudio_promise) === 'undefined') {
+        sys.__picoaudio_promise = new Promise((resolve, reject) => {
+            loadScript(PICOAUDIO_URL, () => {
+                const PicoAudio = window.PicoAudio
+                if (typeof(PicoAudio) === 'undefined') {
+                    reject(new Error('PicoAudio.min.jsの読み込みに失敗しました'))
+                    return
+                }
+                const pico = new PicoAudio()
+                sys.__picoaudio = pico
+                console.log('loaded PicoAudio.min.js')
+                resolve(pico)
+            })
+        })
+        sys.__picoaudio_promise.catch(() => {
+            // 失敗時は次回に備えて読み込み前の状態に戻す
+            sys.__picoaudio_promise = undefined
+        })
+    }
+    return sys.__picoaudio_promise
+}
+
 /// MMLをコンパイルしてMIDIバイナリを返す(非同期版)
-function compileMMLAsync(mml, sys) {
-    return new Promise((resolve, _reject) => {
-        if (typeof(sys.__sakuramml) === 'undefined') {
-            // コンパイラの読み込み
-            import(SARKUAMML_URL)
-            .then(module => {
-                sys.__sakuramml = module;
-                module.default().then(() => {
-                    console.log('loaded sakuramml.js')
-                    console.log('sakuramml ver.', module.get_version());
-                    resolve(compileMML(mml, sys))
-                })
-            });
-        } else {
-            // すでに読み込まれている
-            resolve(compileMML(mml, sys))
-        }
-    })
+async function compileMMLAsync (mml, sys) {
+    const module = await loadSakuraMMLAsync(sys)
+    return compileMML(mml, module)
 }
 
 /// MMLをコンパイルしてMIDIバイナリを返す
-function compileMML(mml, sys) {
-    const SakuraCompiler = sys.__sakuramml.SakuraCompiler
+function compileMML (mml, module) {
+    const SakuraCompiler = module.SakuraCompiler
     const com = SakuraCompiler.new()
     com.set_language('ja')
     const binMidi = com.compile(mml)
-    const log = com.get_log()
-    console.log('sakuramml.log=', log)
+    reportMmlLog(com.get_log())
     return binMidi
 }
 
+/// コンパイルログを出力する。エラーは「音が出ないのに気づかない」を防ぐためconsole.errorに出す
+function reportMmlLog (log) {
+    if (typeof (log) !== 'string' || log === '') {
+        return
+    }
+    if (log.indexOf('[ERROR]') >= 0) {
+        console.error('MMLのコンパイルに失敗しました:\n' + log)
+    } else {
+        console.log('sakuramml.log=', log)
+    }
+}
+
 /// MMLを演奏する(PicoAudioを使う)
-function playMML(mml, sys) {
-    // wait for picoaudio
-    if (typeof(sys.__picoaudio) === 'undefined') {
-        setTimeout(() => { playMML(mml, sys) }, 100)
+async function playMML (mml, module, sys) {
+    if (typeof (module) === 'undefined') {
+        return
+    }
+    // PicoAudioの読み込み完了を待つ(失敗時は何もしない)
+    const pico = await loadPicoAudioAsync(sys).catch(err => {
+        console.error(err.message)
+        return undefined
+    })
+    if (typeof (pico) === 'undefined') {
         return
     }
     // play
-    const SakuraCompiler = sys.__sakuramml.SakuraCompiler
-    const com = SakuraCompiler.new()
-    com.set_language('ja')
-    const binMidi = compileMML(mml, sys)
+    const binMidi = compileMML(mml, module)
+    if (typeof (binMidi) === 'undefined') {
+        return
+    }
     const smfData = new Uint8Array(binMidi);
-    sys.__picoaudio.initStatus()
-    const parsedData = sys.__picoaudio.parseSMF(smfData)
-    sys.__picoaudio.setData(parsedData)
-    sys.__picoaudio.init()
+    pico.initStatus()
+    const parsedData = pico.parseSMF(smfData)
+    pico.setData(parsedData)
+    pico.init()
     // ループ再生設定
     if (sys.__picoaudio_loop) {
-        sys.__picoaudio.setLoop(true)
+        pico.setLoop(true)
     } else {
-        sys.__picoaudio.setLoop(false)
+        pico.setLoop(false)
     }
-    sys.__picoaudio.play()
+    pico.play()
 }
 
 function playMIDI(url, sys) {
