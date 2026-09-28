@@ -5,7 +5,10 @@
   "description": "Music plugins for nadesiko3(wnako/web version)",
   "main": "nadesiko3-music.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "sakuramml": "0.2.3"
   },
   "keywords": ["music", "mml", "sakuramml", "midi", "soundfont", "nadesiko3"],
   "author": "kujirahand",
